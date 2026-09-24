@@ -1,3 +1,6 @@
+# Compiled executable
+cpack
+
 # Compiled object files
 *.o
 *.obj
