@@ -1,5 +1,6 @@
 # Compiled executable
 cpack
+/test_*
 
 # Compiled object files
 *.o
