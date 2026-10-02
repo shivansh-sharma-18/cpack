@@ -1,3 +1,4 @@
+
 #ifndef HUFFMAN_H
 #define HUFFMAN_H
 
@@ -41,5 +42,9 @@ int huffman_encode(const uint8_t *data, size_t length,
 
 uint8_t *huffman_decode(BitReader *reader, const HuffmanNode *root,
                         size_t original_length);
+
+uint8_t *huffman_decode_limited(BitReader *reader, const HuffmanNode *root,
+                                size_t original_length,
+                                uint64_t *bits_consumed);
 
 #endif

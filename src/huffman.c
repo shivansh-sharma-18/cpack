@@ -1,3 +1,4 @@
+
 #include "huffman.h"
 
 #include <stdlib.h>
@@ -11,6 +12,7 @@ typedef struct {
 
 void huffman_count_frequencies(const uint8_t *data, size_t length,
                                uint64_t frequencies[HUFFMAN_SYMBOLS]) {
+
   for (size_t i = 0; i < HUFFMAN_SYMBOLS; i++) {
     frequencies[i] = 0;
   }
@@ -22,6 +24,7 @@ void huffman_count_frequencies(const uint8_t *data, size_t length,
 
 HuffmanNode *huffman_create_node(uint8_t symbol, uint64_t frequency) {
   HuffmanNode *node = malloc(sizeof(HuffmanNode));
+
   if (node == NULL) {
     return NULL;
   }
@@ -39,6 +42,7 @@ static int heap_node_less(const HuffmanNode *a, const HuffmanNode *b) {
   if (a->frequency != b->frequency) {
     return a->frequency < b->frequency;
   }
+
   return a->order < b->order;
 }
 
@@ -104,6 +108,7 @@ static HuffmanNode *heap_pop(HuffmanHeap *heap) {
   }
 
   HuffmanNode *result = heap->nodes[0];
+
   heap->size--;
 
   if (heap->size > 0) {
@@ -115,6 +120,7 @@ static HuffmanNode *heap_pop(HuffmanHeap *heap) {
 }
 
 HuffmanNode *huffman_build_tree(const uint64_t frequencies[HUFFMAN_SYMBOLS]) {
+
   HuffmanHeap heap;
 
   heap.capacity = HUFFMAN_SYMBOLS * 2;
@@ -133,6 +139,7 @@ HuffmanNode *huffman_build_tree(const uint64_t frequencies[HUFFMAN_SYMBOLS]) {
     }
 
     HuffmanNode *node = huffman_create_node((uint8_t)i, frequencies[i]);
+
     if (node == NULL) {
       free(heap.nodes);
       return NULL;
@@ -182,6 +189,7 @@ HuffmanNode *huffman_build_tree(const uint64_t frequencies[HUFFMAN_SYMBOLS]) {
   }
 
   HuffmanNode *root = heap_pop(&heap);
+
   free(heap.nodes);
 
   return root;
@@ -194,6 +202,7 @@ void huffman_free_tree(HuffmanNode *root) {
 
   huffman_free_tree(root->left);
   huffman_free_tree(root->right);
+
   free(root);
 }
 
@@ -201,6 +210,7 @@ static void generate_codes_recursive(const HuffmanNode *node,
                                      HuffmanCode codes[HUFFMAN_SYMBOLS],
                                      uint8_t path[HUFFMAN_MAX_CODE_LENGTH],
                                      size_t depth) {
+
   if (node == NULL) {
     return;
   }
@@ -212,23 +222,28 @@ static void generate_codes_recursive(const HuffmanNode *node,
     }
 
     codes[node->symbol].length = (uint16_t)depth;
+
     memcpy(codes[node->symbol].bits, path, depth);
+
     return;
   }
 
   if (node->left != NULL) {
     path[depth] = 0;
+
     generate_codes_recursive(node->left, codes, path, depth + 1);
   }
 
   if (node->right != NULL) {
     path[depth] = 1;
+
     generate_codes_recursive(node->right, codes, path, depth + 1);
   }
 }
 
 int huffman_generate_codes(const HuffmanNode *root,
                            HuffmanCode codes[HUFFMAN_SYMBOLS]) {
+
   if (root == NULL) {
     return 0;
   }
@@ -239,6 +254,7 @@ int huffman_generate_codes(const HuffmanNode *root,
   }
 
   uint8_t path[HUFFMAN_MAX_CODE_LENGTH];
+
   memset(path, 0, sizeof(path));
 
   generate_codes_recursive(root, codes, path, 0);
@@ -249,6 +265,7 @@ int huffman_generate_codes(const HuffmanNode *root,
 int huffman_encode(const uint8_t *data, size_t length,
                    const HuffmanCode codes[HUFFMAN_SYMBOLS],
                    BitWriter *writer) {
+
   for (size_t i = 0; i < length; i++) {
     const HuffmanCode *code = &codes[data[i]];
 
@@ -268,11 +285,13 @@ int huffman_encode(const uint8_t *data, size_t length,
 
 uint8_t *huffman_decode(BitReader *reader, const HuffmanNode *root,
                         size_t original_length) {
+
   if (root == NULL) {
     return NULL;
   }
 
   uint8_t *output = malloc(original_length == 0 ? 1 : original_length);
+
   if (output == NULL) {
     return NULL;
   }
@@ -280,12 +299,15 @@ uint8_t *huffman_decode(BitReader *reader, const HuffmanNode *root,
   if (root->left == NULL && root->right == NULL) {
     for (size_t i = 0; i < original_length; i++) {
       int bit = bitreader_read_bit(reader);
+
       if (bit != 0) {
         free(output);
         return NULL;
       }
+
       output[i] = root->symbol;
     }
+
     return output;
   }
 
@@ -294,6 +316,7 @@ uint8_t *huffman_decode(BitReader *reader, const HuffmanNode *root,
 
     while (current->left != NULL || current->right != NULL) {
       int bit = bitreader_read_bit(reader);
+
       if (bit == -1) {
         free(output);
         return NULL;
@@ -313,6 +336,76 @@ uint8_t *huffman_decode(BitReader *reader, const HuffmanNode *root,
 
     output[i] = current->symbol;
   }
+
+  return output;
+}
+
+uint8_t *huffman_decode_limited(BitReader *reader, const HuffmanNode *root,
+                                size_t original_length,
+                                uint64_t *bits_consumed) {
+
+  if (reader == NULL || root == NULL || bits_consumed == NULL) {
+    return NULL;
+  }
+
+  *bits_consumed = 0;
+
+  if (!reader->limited) {
+    return NULL;
+  }
+
+  uint8_t *output = malloc(original_length == 0 ? 1 : original_length);
+
+  if (output == NULL) {
+    return NULL;
+  }
+
+  uint64_t starting_bits = reader->bits_read;
+
+  if (root->left == NULL && root->right == NULL) {
+    for (size_t i = 0; i < original_length; i++) {
+      int bit = bitreader_read_bit(reader);
+
+      if (bit != 0) {
+        free(output);
+        return NULL;
+      }
+
+      output[i] = root->symbol;
+    }
+
+    *bits_consumed = reader->bits_read - starting_bits;
+
+    return output;
+  }
+
+  for (size_t i = 0; i < original_length; i++) {
+    const HuffmanNode *current = root;
+
+    while (current->left != NULL || current->right != NULL) {
+      int bit = bitreader_read_bit(reader);
+
+      if (bit == -1) {
+        free(output);
+        return NULL;
+      }
+
+      if (bit == 0) {
+        current = current->left;
+      } else {
+        current = current->right;
+      }
+
+      if (current == NULL) {
+        free(output);
+        return NULL;
+      }
+    }
+
+    output[i] = current->symbol;
+  }
+
+  *bits_consumed = reader->bits_read - starting_bits;
 
   return output;
 }

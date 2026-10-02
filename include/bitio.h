@@ -1,3 +1,4 @@
+
 #ifndef BITIO_H
 #define BITIO_H
 
@@ -14,6 +15,9 @@ typedef struct {
   FILE *file;
   uint8_t buffer;
   int bit_count;
+  uint64_t bits_read;
+  uint64_t bit_limit;
+  int limited;
 } BitReader;
 
 void bitwriter_init(BitWriter *writer, FILE *file);
@@ -22,6 +26,8 @@ int bitwriter_write_bits(BitWriter *writer, uint32_t value, int count);
 int bitwriter_flush(BitWriter *writer);
 
 void bitreader_init(BitReader *reader, FILE *file);
+void bitreader_init_limited(BitReader *reader, FILE *file, uint64_t bit_limit);
+
 int bitreader_read_bit(BitReader *reader);
 uint32_t bitreader_read_bits(BitReader *reader, int count);
 
