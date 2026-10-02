@@ -84,6 +84,36 @@ static int decompress_file(const char *input_path, const char *output_path) {
   return 0;
 }
 
+static int list_archive(const char *archive_path) {
+  CpackCompressedBuffer compressed = {0};
+
+  if (!cpack_archive_read(archive_path, &compressed)) {
+    fprintf(stderr, "Error: Could not read archive.\n");
+    return 1;
+  }
+
+  printf("CPack Archive Information\n");
+  printf("-------------------------\n");
+  printf("Archive: %s\n", archive_path);
+  printf("Original size: %llu bytes\n",
+         (unsigned long long)compressed.original_length);
+  printf("Compressed size: %zu bytes\n", compressed.compressed_size);
+  printf("Bit length: %llu bits\n", (unsigned long long)compressed.bit_length);
+  printf("Token stream size: %llu bytes\n",
+         (unsigned long long)compressed.token_stream_length);
+
+  if (compressed.compressed_size > 0) {
+    double ratio =
+        (double)compressed.original_length / (double)compressed.compressed_size;
+
+    printf("Compression ratio: %.2f:1\n", ratio);
+  }
+
+  cpack_free_compressed_buffer(&compressed);
+
+  return 0;
+}
+
 int main(int argc, char *argv[]) {
   if (argc < 2) {
     print_usage();
@@ -109,8 +139,12 @@ int main(int argc, char *argv[]) {
   }
 
   if (strcmp(argv[1], "list") == 0) {
-    fprintf(stderr, "List command is not implemented yet.\n");
-    return 1;
+    if (argc != 3) {
+      print_usage();
+      return 1;
+    }
+
+    return list_archive(argv[2]);
   }
 
   fprintf(stderr, "Unknown command: %s\n\n", argv[1]);
