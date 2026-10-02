@@ -2,15 +2,15 @@
 
 #include "bitio.h"
 #include "huffman.h"
-#include "lz77.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-static int serialize_tokens(const LZ77TokenArray *tokens, uint8_t **output,
-                            size_t *output_length) {
-  if (tokens == NULL || output == NULL || output_length == NULL) {
+int cpack_serialize_tokens(const LZ77TokenArray *tokens, uint8_t **output,
+                           size_t *output_length) {
+  if (tokens == NULL || output == NULL || output_length == NULL ||
+      (tokens->count > 0 && tokens->tokens == NULL)) {
     return 0;
   }
 
@@ -37,7 +37,14 @@ static int serialize_tokens(const LZ77TokenArray *tokens, uint8_t **output,
     if (token->is_match == 0) {
       buffer[position++] = 0;
       buffer[position++] = token->literal;
+
     } else if (token->is_match == 1) {
+      if (token->offset == 0 || token->offset > LZ77_WINDOW_SIZE ||
+          token->length < LZ77_MIN_MATCH || token->length > LZ77_MAX_MATCH) {
+        free(buffer);
+        return 0;
+      }
+
       buffer[position++] = 1;
 
       buffer[position++] = (uint8_t)(token->offset & 0xFF);
@@ -45,6 +52,7 @@ static int serialize_tokens(const LZ77TokenArray *tokens, uint8_t **output,
 
       buffer[position++] = (uint8_t)(token->length & 0xFF);
       buffer[position++] = (uint8_t)(token->length >> 8);
+
     } else {
       free(buffer);
       return 0;
@@ -57,8 +65,8 @@ static int serialize_tokens(const LZ77TokenArray *tokens, uint8_t **output,
   return 1;
 }
 
-static int deserialize_tokens(const uint8_t *data, size_t length,
-                              LZ77TokenArray *tokens) {
+int cpack_deserialize_tokens(const uint8_t *data, size_t length,
+                             LZ77TokenArray *tokens) {
   if (tokens == NULL || (length > 0 && data == NULL)) {
     return 0;
   }
@@ -68,6 +76,10 @@ static int deserialize_tokens(const uint8_t *data, size_t length,
 
   if (length == 0) {
     return 1;
+  }
+
+  if (length > SIZE_MAX / sizeof(LZ77Token)) {
+    return 0;
   }
 
   LZ77Token *result = malloc(length * sizeof(LZ77Token));
@@ -92,6 +104,7 @@ static int deserialize_tokens(const uint8_t *data, size_t length,
       result[count].literal = data[position++];
       result[count].offset = 0;
       result[count].length = 0;
+
     } else if (type == 1) {
       if (length - position < 4) {
         free(result);
@@ -118,6 +131,7 @@ static int deserialize_tokens(const uint8_t *data, size_t length,
         free(result);
         return 0;
       }
+
     } else {
       free(result);
       return 0;
@@ -154,10 +168,12 @@ int cpack_pipeline_round_trip(const uint8_t *input, size_t input_length,
   }
 
   LZ77TokenArray tokens = {0};
+
   uint8_t *serialized = NULL;
   size_t serialized_length = 0;
 
   uint8_t *decoded_serialized = NULL;
+
   LZ77TokenArray decoded_tokens = {0};
 
   HuffmanNode *root = NULL;
@@ -169,7 +185,7 @@ int cpack_pipeline_round_trip(const uint8_t *input, size_t input_length,
     goto cleanup;
   }
 
-  if (!serialize_tokens(&tokens, &serialized, &serialized_length)) {
+  if (!cpack_serialize_tokens(&tokens, &serialized, &serialized_length)) {
     goto cleanup;
   }
 
@@ -196,6 +212,7 @@ int cpack_pipeline_round_trip(const uint8_t *input, size_t input_length,
   }
 
   BitWriter writer;
+
   bitwriter_init(&writer, temp);
 
   if (!huffman_encode(serialized, serialized_length, codes, &writer)) {
@@ -206,9 +223,12 @@ int cpack_pipeline_round_trip(const uint8_t *input, size_t input_length,
     goto cleanup;
   }
 
-  rewind(temp);
+  if (fseek(temp, 0, SEEK_SET) != 0) {
+    goto cleanup;
+  }
 
   BitReader reader;
+
   bitreader_init(&reader, temp);
 
   decoded_serialized = huffman_decode(&reader, root, serialized_length);
@@ -217,8 +237,8 @@ int cpack_pipeline_round_trip(const uint8_t *input, size_t input_length,
     goto cleanup;
   }
 
-  if (!deserialize_tokens(decoded_serialized, serialized_length,
-                          &decoded_tokens)) {
+  if (!cpack_deserialize_tokens(decoded_serialized, serialized_length,
+                                &decoded_tokens)) {
     goto cleanup;
   }
 
