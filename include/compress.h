@@ -6,6 +6,8 @@
 
 #include "huffman.h"
 
+typedef enum { CPACK_MODE_COMPRESSED = 0, CPACK_MODE_RAW = 1 } CpackStorageMode;
+
 typedef struct {
   uint8_t *data;
   size_t compressed_size;
@@ -15,6 +17,8 @@ typedef struct {
   uint64_t token_stream_length;
 
   uint64_t frequencies[HUFFMAN_SYMBOLS];
+
+  CpackStorageMode mode;
 } CpackCompressedBuffer;
 
 int cpack_compress_buffer(const uint8_t *input, size_t input_length,

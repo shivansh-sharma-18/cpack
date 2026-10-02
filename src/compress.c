@@ -1,4 +1,3 @@
-
 #include "compress.h"
 
 #include "bitio.h"
@@ -65,6 +64,17 @@ static int validate_frequencies(const uint64_t frequencies[HUFFMAN_SYMBOLS],
   return total == expected_total;
 }
 
+static int frequencies_are_zero(const uint64_t frequencies[HUFFMAN_SYMBOLS]) {
+
+  for (size_t i = 0; i < HUFFMAN_SYMBOLS; i++) {
+    if (frequencies[i] != 0) {
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
 static int
 validate_compressed_metadata(const CpackCompressedBuffer *compressed) {
 
@@ -77,23 +87,36 @@ validate_compressed_metadata(const CpackCompressedBuffer *compressed) {
     return 0;
   }
 
+  if (compressed->mode != CPACK_MODE_COMPRESSED &&
+      compressed->mode != CPACK_MODE_RAW) {
+    return 0;
+  }
+
   if (compressed->original_length == 0) {
     if (compressed->compressed_size != 0 || compressed->bit_length != 0 ||
-        compressed->token_stream_length != 0) {
+        compressed->token_stream_length != 0 ||
+        !frequencies_are_zero(compressed->frequencies)) {
       return 0;
-    }
-
-    for (size_t i = 0; i < HUFFMAN_SYMBOLS; i++) {
-      if (compressed->frequencies[i] != 0) {
-        return 0;
-      }
     }
 
     return 1;
   }
 
-  if (compressed->data == NULL || compressed->compressed_size == 0 ||
-      compressed->bit_length == 0 || compressed->token_stream_length == 0) {
+  if (compressed->data == NULL || compressed->compressed_size == 0) {
+    return 0;
+  }
+
+  if (compressed->mode == CPACK_MODE_RAW) {
+    if (compressed->original_length != compressed->compressed_size ||
+        compressed->bit_length != 0 || compressed->token_stream_length != 0 ||
+        !frequencies_are_zero(compressed->frequencies)) {
+      return 0;
+    }
+
+    return 1;
+  }
+
+  if (compressed->bit_length == 0 || compressed->token_stream_length == 0) {
     return 0;
   }
 
@@ -137,6 +160,31 @@ static int validate_padding_bits(const CpackCompressedBuffer *compressed) {
   return (last_byte & padding_mask) == 0;
 }
 
+static int store_raw_data(const uint8_t *input, size_t input_length,
+                          CpackCompressedBuffer *result) {
+
+  uint8_t *raw_data = malloc(input_length);
+
+  if (raw_data == NULL) {
+    return 0;
+  }
+
+  memcpy(raw_data, input, input_length);
+
+  free(result->data);
+
+  result->data = raw_data;
+  result->compressed_size = input_length;
+  result->bit_length = 0;
+  result->token_stream_length = 0;
+
+  memset(result->frequencies, 0, sizeof(result->frequencies));
+
+  result->mode = CPACK_MODE_RAW;
+
+  return 1;
+}
+
 int cpack_compress_buffer(const uint8_t *input, size_t input_length,
                           CpackCompressedBuffer *result) {
 
@@ -147,6 +195,7 @@ int cpack_compress_buffer(const uint8_t *input, size_t input_length,
   memset(result, 0, sizeof(*result));
 
   result->original_length = (uint64_t)input_length;
+  result->mode = CPACK_MODE_COMPRESSED;
 
   if (input_length == 0) {
     result->data = malloc(1);
@@ -252,6 +301,16 @@ int cpack_compress_buffer(const uint8_t *input, size_t input_length,
     }
   }
 
+  /*
+   * If compression does not reduce the payload size,
+   * store the original input instead.
+   */
+  if (result->compressed_size >= input_length) {
+    if (!store_raw_data(input, input_length, result)) {
+      goto cleanup;
+    }
+  }
+
   success = 1;
 
 cleanup:
@@ -287,8 +346,6 @@ int cpack_decompress_buffer(const CpackCompressedBuffer *compressed,
 
   size_t original_length = (size_t)compressed->original_length;
 
-  size_t token_stream_length = (size_t)compressed->token_stream_length;
-
   if (original_length == 0) {
     uint8_t *empty = malloc(1);
 
@@ -301,6 +358,30 @@ int cpack_decompress_buffer(const CpackCompressedBuffer *compressed,
 
     return 1;
   }
+
+  /*
+   * Raw mode: the stored payload is already the original data.
+   */
+  if (compressed->mode == CPACK_MODE_RAW) {
+    uint8_t *raw = malloc(original_length);
+
+    if (raw == NULL) {
+      return 0;
+    }
+
+    memcpy(raw, compressed->data, original_length);
+
+    *output = raw;
+    *output_length = original_length;
+
+    return 1;
+  }
+
+  if (compressed->mode != CPACK_MODE_COMPRESSED) {
+    return 0;
+  }
+
+  size_t token_stream_length = (size_t)compressed->token_stream_length;
 
   HuffmanNode *root = huffman_build_tree(compressed->frequencies);
 

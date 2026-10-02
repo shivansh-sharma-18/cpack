@@ -26,3 +26,10 @@ bin/
 # Temporary files
 *.tmp
 *.log
+
+# CPack benchmark generated files
+benchmark/cpack_benchmark
+benchmark/data/
+
+# Temporary test files
+sample.txt
