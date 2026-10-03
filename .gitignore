@@ -1,5 +1,8 @@
+```gitignore
 # Compiled executable
-cpack
+/cpack
+
+# Test executables
 /test_*
 
 # Compiled object files
@@ -10,6 +13,9 @@ cpack
 *.exe
 *.out
 *.app
+
+# Debug symbols
+*.dSYM/
 
 # Build directories
 build/
@@ -27,8 +33,12 @@ bin/
 *.tmp
 *.log
 
+# Generated CPack archives and restored outputs
+*.cpk
+*.restored
+
 # CPack benchmark generated files
-benchmark/cpack_benchmark
+/benchmark/cpack_benchmark
 benchmark/data/
 
 # Temporary test files
