@@ -9,10 +9,11 @@ SRC = src/main.c \
       src/lz77.c \
       src/huffman.c \
       src/bitio.c \
-      src/crc32.c
+      src/crc32.c \
+      src/directory.c
 
 TESTS = test_bitio test_crc32 test_lz77 test_huffman \
-        test_token_codec test_compress test_archive
+        test_token_codec test_compress test_archive test_directory
 
 BENCHMARK_SRC = benchmark/benchmark.c \
                 src/file_io.c \
@@ -53,6 +54,9 @@ test_compress: tests/test_compress.c src/compress.c src/token_codec.c src/lz77.c
 test_archive: tests/test_archive.c src/archive.c src/compress.c src/token_codec.c src/lz77.c src/huffman.c src/bitio.c src/crc32.c
 	$(CC) $(CFLAGS) $^ -o $@
 
+test_directory: tests/test_directory.c src/directory.c
+	$(CC) $(CFLAGS) $^ -o $@
+
 # Build and run all tests
 test: $(TESTS)
 	@set -e; for test in $(TESTS); do \
@@ -69,4 +73,4 @@ benchmark/cpack_benchmark: $(BENCHMARK_SRC)
 # Remove generated files
 clean:
 	rm -f cpack $(TESTS) benchmark/cpack_benchmark
-	rm -f *.cpk *.restored
+	rm -f *.cpk *.restored directory.o
